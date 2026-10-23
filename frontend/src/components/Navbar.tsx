@@ -1,11 +1,12 @@
 import React from 'react';
-import { Shield, AlertTriangle, Sparkles, BellRing } from 'lucide-react';
+import { Shield, AlertTriangle, Sparkles, BellRing, Compass } from 'lucide-react';
 import type { OfficialAdvisory } from '../services/api';
 
 interface NavbarProps {
   advisories: OfficialAdvisory[];
   onOpenTestModal: () => void;
   onOpenComparisonModal: () => void;
+  onOpenShelterModal?: () => void;
   activeAlertCount: number;
   dataFreshness?: string;
   isBackendOnline?: boolean;
@@ -15,6 +16,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   advisories, 
   onOpenTestModal, 
   onOpenComparisonModal, 
+  onOpenShelterModal,
   activeAlertCount,
   dataFreshness = 'LIVE',
   isBackendOnline = true
@@ -117,6 +119,30 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {onOpenShelterModal && (
+            <button
+              onClick={onOpenShelterModal}
+              id="btn-open-shelter-map"
+              style={{
+                backgroundColor: 'rgba(15, 157, 154, 0.2)',
+                color: '#A7F3D0',
+                border: '1px solid rgba(15, 157, 154, 0.4)',
+                padding: '6px 12px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: '0.75rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              title="Open Kerala Relief Centers & Evacuation Safe-Spots Map"
+            >
+              <Compass size={13} color="#2DD4BF" />
+              Relief Safe-Spots
+            </button>
+          )}
+
           <button
             onClick={onOpenComparisonModal}
             id="btn-model-comparison"

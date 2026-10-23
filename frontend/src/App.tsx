@@ -9,10 +9,11 @@ import { AlertNotificationPanel } from './components/AlertNotificationPanel';
 import { PredictionHistoryTable } from './components/PredictionHistoryTable';
 import { DisclaimerBanner } from './components/DisclaimerBanner';
 import { ModelComparisonModal } from './components/ModelComparisonModal';
-import { Sliders, Bell, History } from 'lucide-react';
+import { ShelterFinderModal } from './components/ShelterFinderModal';
+import { Sliders, Bell, History, Compass } from 'lucide-react';
 import { api } from './services/api';
-import type { 
-  LocationInfo, WeatherData, PredictionData, AlertItem, OfficialAdvisory 
+import type {
+  LocationInfo, WeatherData, PredictionData, AlertItem, OfficialAdvisory
 } from './services/api';
 
 export const App: React.FC = () => {
@@ -21,7 +22,7 @@ export const App: React.FC = () => {
   const [selectedLocationId, setSelectedLocationId] = useState<string>('ernakulam');
   const [mechanismFilter, setMechanismFilter] = useState<string>('ALL');
   const [currentModelVersion, setCurrentModelVersion] = useState<string>('2.0.0');
-  
+
   const [weather, setWeather] = useState<WeatherData | null>(null);
   const [prediction, setPrediction] = useState<PredictionData | null>(null);
   const [alerts, setAlerts] = useState<AlertItem[]>([]);
@@ -32,16 +33,24 @@ export const App: React.FC = () => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  const [activeScenario, setActiveScenario] = useState<string | null>(null);
   const [isTestModalOpen, setIsTestModalOpen] = useState<boolean>(false);
   const [isComparisonModalOpen, setIsComparisonModalOpen] = useState<boolean>(false);
+  const [isShelterModalOpen, setIsShelterModalOpen] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<'factors' | 'alerts' | 'history'>('factors');
 
-  const loadLocationData = async (locId: string, modelVer: string, forceRefresh = false, simRainMm?: number) => {
+  const loadLocationData = async (
+    locId: string,
+    modelVer: string,
+    forceRefresh = false,
+    simRainMm?: number,
+    scenarioName?: string | null
+  ) => {
     try {
       const [wData, pData, histData, alertData] = await Promise.all([
         api.getWeather(locId, forceRefresh),
-        api.getPrediction(locId, modelVer, simRainMm),
+        api.getPrediction(locId, modelVer, simRainMm, scenarioName || undefined),
         api.getPredictionHistory(locId),
         api.getAlerts()
       ]);
@@ -82,7 +91,7 @@ export const App: React.FC = () => {
         setAdvisories(advs);
         setAlerts(initialAlerts);
         setComparisonData(comp);
-        
+
         const initialLoc = enrichedLocs.find(l => l.id === 'ernakulam') ? 'ernakulam' : (enrichedLocs[0]?.id || 'ernakulam');
         setSelectedLocationId(initialLoc);
         await loadLocationData(initialLoc, '2.0.0');
@@ -138,11 +147,21 @@ export const App: React.FC = () => {
   const handleRefresh = async () => {
     setIsRefreshing(true);
     setIsSimulating(false);
+    setActiveScenario(null);
     await loadLocationData(selectedLocationId, currentModelVersion, true);
     setIsRefreshing(false);
   };
 
+  const handleSelectScenario = async (scenario: string) => {
+    setActiveScenario(scenario);
+    setIsSimulating(true);
+    setIsRefreshing(true);
+    await loadLocationData(selectedLocationId, currentModelVersion, false, undefined, scenario);
+    setIsRefreshing(false);
+  };
+
   const handleSimulateRainfall = async (rainfallMm: number) => {
+    setActiveScenario(null);
     setIsSimulating(true);
     setIsRefreshing(true);
     await loadLocationData(selectedLocationId, currentModelVersion, false, rainfallMm);
@@ -150,6 +169,7 @@ export const App: React.FC = () => {
   };
 
   const handleResetSimulation = async () => {
+    setActiveScenario(null);
     setIsSimulating(false);
     setIsRefreshing(true);
     await loadLocationData(selectedLocationId, currentModelVersion, false);
@@ -202,10 +222,11 @@ export const App: React.FC = () => {
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', backgroundColor: 'var(--bg-app)' }}>
       {/* Top Professional Emergency Navigation */}
-      <Navbar 
+      <Navbar
         advisories={advisories}
         onOpenTestModal={() => setIsTestModalOpen(true)}
         onOpenComparisonModal={() => setIsComparisonModalOpen(true)}
+        onOpenShelterModal={() => setIsShelterModalOpen(true)}
         activeAlertCount={alerts.filter(a => a.severity === 'WARNING' || a.severity === 'EMERGENCY').length}
         dataFreshness={weather?.freshness || 'LIVE'}
         isBackendOnline={!error}
@@ -227,8 +248,8 @@ export const App: React.FC = () => {
             alignItems: 'center'
           }}>
             <span><strong>Backend Connectivity Notice:</strong> {error}</span>
-            <button 
-              className="btn-secondary" 
+            <button
+              className="btn-secondary"
               onClick={() => { setError(null); handleRefresh(); }}
               style={{ fontSize: '0.75rem', padding: '3px 8px' }}
             >
@@ -253,8 +274,8 @@ export const App: React.FC = () => {
         />
 
         {/* Primary 24-Hour Risk Summary & Key Hydrometeorological Indicators */}
-        <RiskOverviewCards 
-          prediction={prediction} 
+        <RiskOverviewCards
+          prediction={prediction}
           weather={weather}
           location={selectedLocation}
           currentModelVersion={currentModelVersion}
@@ -344,6 +365,29 @@ export const App: React.FC = () => {
               <History size={14} />
               Prediction Inferences Audit ({history.length})
             </button>
+
+            <button
+              onClick={() => setIsShelterModalOpen(true)}
+              id="tab-btn-open-shelters"
+              style={{
+                backgroundColor: 'rgba(15, 157, 154, 0.08)',
+                color: 'var(--brand-teal)',
+                border: '1px dashed var(--brand-teal)',
+                borderRadius: 'var(--radius-xs)',
+                padding: '6px 12px',
+                fontSize: '0.78rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                marginLeft: 'auto'
+              }}
+              title="Open verified Kerala relief centers and evacuation map"
+            >
+              <Compass size={13} />
+              Find Nearest Safe-Spots
+            </button>
           </div>
         </div>
 
@@ -353,7 +397,10 @@ export const App: React.FC = () => {
             factors={prediction.key_factors}
             onSimulateRainfall={handleSimulateRainfall}
             isSimulating={isSimulating}
+            activeScenario={activeScenario}
+            onSelectScenario={handleSelectScenario}
             onResetSimulation={handleResetSimulation}
+            prediction={prediction}
           />
         )}
 
@@ -381,6 +428,13 @@ export const App: React.FC = () => {
           isOpen={isComparisonModalOpen}
           onClose={() => setIsComparisonModalOpen(false)}
           comparisonData={comparisonData}
+        />
+
+        {/* Kerala Relief Centers & Evacuation Map Modal */}
+        <ShelterFinderModal
+          isOpen={isShelterModalOpen}
+          onClose={() => setIsShelterModalOpen(false)}
+          initialDistrictId={selectedLocationId}
         />
       </main>
     </div>

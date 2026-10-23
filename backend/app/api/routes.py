@@ -9,6 +9,11 @@ from backend.app.schemas.prediction import (
     LocationOut, WeatherResponse, PredictionRequest, PredictionResponse,
     AlertOut, TestAlertRequest, OfficialAdvisoryOut
 )
+from backend.app.schemas.shelter import (
+    ReliefFacilitiesResponse, ReservationRequest, ReservationResponse,
+    CheckInRequest, CancelReservationRequest, StaffCapacityUpdateRequest,
+    ShelterRecommendationRequest, ShelterRecommendationResponse, ShelterOccupancyInfo
+)
 from backend.app.services.weather_service import WeatherService
 from backend.app.services.predictor_service import PredictorService
 from backend.app.services.warning_engine import WarningEngine
@@ -72,6 +77,7 @@ def generate_prediction(req: PredictionRequest, db: Session = Depends(get_db)):
             location_id=req.location_id,
             model_version=req.model_version,
             manual_forecast_override=req.manual_forecast_override_mm,
+            simulation_scenario=req.simulation_scenario,
             db_session=db
         )
         # Evaluate warning rules immediately
@@ -102,7 +108,7 @@ def get_prediction_history(location_id: Optional[str] = None, limit: int = Query
     if location_id:
         query = query.filter(PredictionRecord.location_id == location_id)
     records = query.order_by(PredictionRecord.timestamp.desc()).limit(limit).all()
-    
+
     return [
         {
             "id": r.id,
@@ -154,9 +160,9 @@ def get_official_advisories(db: Session = Depends(get_db)):
 def get_kerala_geography():
     """Retrieve verified centralized Kerala geography, district bounding boxes, river basins, and coastal stations."""
     from backend.app.geography_kerala import (
-        KERALA_DISTRICTS, 
-        KERALA_RIVER_BASINS, 
-        KERALA_COASTAL_STATIONS, 
+        KERALA_DISTRICTS,
+        KERALA_RIVER_BASINS,
+        KERALA_COASTAL_STATIONS,
         KERALA_DISTRICT_BOUNDS
     )
     return {
@@ -170,3 +176,89 @@ def get_kerala_geography():
         "river_basins": [b.dict() for b in KERALA_RIVER_BASINS.values()],
         "coastal_stations": [s.dict() for s in KERALA_COASTAL_STATIONS.values()]
     }
+
+
+@router.get("/shelters", response_model=ReliefFacilitiesResponse, tags=["Relief & Evacuation"])
+def get_relief_facilities(
+    district_id: Optional[str] = Query(default=None, description="Filter by Kerala district ID (e.g. 'ernakulam')"),
+    query: Optional[str] = Query(default=None, description="Search keyword for camp name, village, or LSG"),
+    limit: int = Query(default=7000, ge=1, le=10000, description="Max facilities to return"),
+    offset: int = Query(default=0, ge=0, description="Pagination offset"),
+    db: Session = Depends(get_db)
+):
+    """
+    Retrieve baseline Kerala relief and evacuation facilities from SEOC GIS registry
+    with attached live shelter occupancy models.
+    """
+    from backend.app.services.shelter_service import ShelterService
+    return ShelterService.get_shelters(
+        db=db,
+        district_id=district_id,
+        search_query=query,
+        limit=limit,
+        offset=offset
+    )
+
+
+@router.post("/shelters/reserve", response_model=ReservationResponse, tags=["Relief & Evacuation"])
+def reserve_shelter_space(
+    payload: ReservationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Atomically creates a timed reservation for shelter space.
+    Rejects reservations for unverified or full shelters.
+    """
+    from backend.app.services.shelter_service import ShelterService
+    return ShelterService.create_reservation(payload, db)
+
+
+@router.post("/shelters/check-in", response_model=ReservationResponse, tags=["Relief & Evacuation"])
+def check_in_shelter(
+    payload: CheckInRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Confirms arrival and check-in for an active reservation exactly once.
+    Transitions reservation to CHECKED_IN and moves held capacity to occupied count.
+    """
+    from backend.app.services.shelter_service import ShelterService
+    return ShelterService.check_in_reservation(payload, db)
+
+
+@router.post("/shelters/cancel", response_model=ReservationResponse, tags=["Relief & Evacuation"])
+def cancel_shelter_reservation(
+    payload: CancelReservationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Cancels an active reservation and immediately releases held capacity.
+    """
+    from backend.app.services.shelter_service import ShelterService
+    return ShelterService.cancel_reservation(payload, db)
+
+
+@router.post("/shelters/staff/update", response_model=ShelterOccupancyInfo, tags=["Relief & Evacuation"])
+def staff_update_shelter_capacity(
+    payload: StaffCapacityUpdateRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Authorized responder / camp officer endpoint to update verified operational capacity
+    and live occupancy counts. Requires responder PIN.
+    """
+    from backend.app.services.shelter_service import ShelterService
+    return ShelterService.update_staff_capacity(payload, db)
+
+
+@router.post("/shelters/recommend", response_model=ShelterRecommendationResponse, tags=["Relief & Evacuation"])
+def recommend_shelters(
+    payload: ShelterRecommendationRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Intelligently recommends safe evacuation spots based on live GPS location, group size,
+    verified operational capacity, road distance, and fallback alternatives if nearest is full.
+    """
+    from backend.app.services.shelter_service import ShelterService
+    return ShelterService.recommend_shelters(payload, db)

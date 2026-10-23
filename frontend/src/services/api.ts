@@ -131,6 +131,9 @@ export interface PredictionData {
   is_rule_based?: boolean;
   risk_estimate_type?: string;
   is_experimental: boolean;
+  is_simulation?: boolean;
+  simulation_scenario?: string;
+  rule_vs_model_reason?: string;
   disclaimer: string;
   is_data_insufficient?: boolean;
 }
@@ -178,13 +181,21 @@ export const api = {
     return res.json();
   },
 
-  async getPrediction(locationId: string, modelVersion = "2.0.0", manualOverrideMm?: number): Promise<PredictionData> {
-    const payload: any = { 
+  async getPrediction(
+    locationId: string,
+    modelVersion = "2.0.0",
+    manualOverrideMm?: number,
+    simulationScenario?: string
+  ): Promise<PredictionData> {
+    const payload: any = {
       location_id: locationId,
       model_version: modelVersion
     };
     if (manualOverrideMm !== undefined) {
       payload.manual_forecast_override_mm = manualOverrideMm;
+    }
+    if (simulationScenario) {
+      payload.simulation_scenario = simulationScenario;
     }
     const res = await fetch(`${API_BASE}/predict`, {
       method: "POST",
